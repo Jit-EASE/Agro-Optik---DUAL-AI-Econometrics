@@ -8,7 +8,7 @@ from sklearn.linear_model import LinearRegression
 import requests
 from openai import OpenAI
 import base64
-import plotly.graph_objects as go
+
 
 # ----------------------------
 # CONFIGURATION
