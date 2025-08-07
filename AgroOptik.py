@@ -89,7 +89,7 @@ def get_iot_data():
 # ----------------------------
 # UI LAYOUT
 # ----------------------------
-st.title("AgroOptik Ireland | AI-Augmented Crop & Seed Insights")
+st.title("AgroOptik Ireland | AI-Augmented Crop Health & Econometric Seed Quality Analysis")
 
 with st.sidebar:
     st.header("📡 IoT Sensor Feed")
