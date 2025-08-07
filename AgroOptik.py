@@ -72,26 +72,40 @@ def call_agentic_ai(prompt_text: str) -> str:
     )
     return resp.choices[0].message.content
 
-@st.cache_data
-def analyze_stress(image: Image.Image) -> tuple[str, float]:
-    # Phenotypic stress detection via Gemini from image
+@st.cache_data(show_spinner=False)
+def analyze_stress(image: Image.Image):
+    """
+    Use Gemini to detect phenotypic stress from the image.
+    Returns a tuple (label: str, confidence: float).
+    """
+    # 1. Encode image to base64 JPEG
     buf = io.BytesIO()
-    image.convert('RGB').save(buf, format='JPEG')
+    image.convert("RGB").save(buf, format="JPEG")
     img_b64 = base64.b64encode(buf.getvalue()).decode()
+
+    # 2. Build and send prompt
     prompt = (
         "Analyze the following base64-encoded crop image and identify any phenotypic stress symptoms. "
         f"Image(base64)={img_b64}"
     )
     response = call_gemini_ai(prompt)
-    parts = response.strip().split('(')
+
+    # 3. Fallback if empty or None
+    if not response:
+        return "No Stress Data", 0.0
+
+    # 4. Parse “Label (0.85)” style replies
+    parts = response.strip().split("(")
     label = parts[0].strip()
     conf = 0.0
-    if len(parts) > 1 and parts[1].endswith(')'):
+    if len(parts) > 1 and parts[1].endswith(")"):
         try:
             conf = float(parts[1][:-1])
-        except:
+        except ValueError:
             conf = 0.0
+
     return label, conf
+
 
 @st.cache_data(show_spinner=False)
 def get_ai_explanation(purity, moisture, pred):
