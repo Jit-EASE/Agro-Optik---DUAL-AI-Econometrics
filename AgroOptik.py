@@ -8,6 +8,7 @@ from sklearn.linear_model import LinearRegression
 import requests
 from openai import OpenAI
 import base64
+import plotly.graph_objects as go
 
 # ----------------------------
 # CONFIGURATION
@@ -155,7 +156,7 @@ with tabs[1]:
     st.metric("Predicted Germination Rate (%)", f"{prediction:.1f}")
 
     # Interactive 3D regression using Plotly
-    import plotly.graph_objects as go
+    
 
     # Prepare training scatter points
     scatter = go.Scatter3d(
