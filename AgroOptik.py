@@ -143,7 +143,7 @@ with tabs[0]:
 
 # ---- TAB 2: Seed Quality & 3D OLS ----
 with tabs[1]:
-    st.header("Seed Purity & 3D Econometric Model")
+    st.header("Seed Purity - Econometric Model")
     purity   = st.slider("Seed Purity (%)", 85, 100, 92)
     moisture = st.slider("Moisture (%)", 10, 16, 12)
 
