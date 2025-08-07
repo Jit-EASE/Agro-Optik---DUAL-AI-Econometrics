@@ -93,6 +93,15 @@ def analyze_stress(image: Image.Image) -> tuple[str, float]:
             conf = 0.0
     return label, conf
 
+@st.cache_data(show_spinner=False)
+def get_ai_explanation(purity, moisture, pred):
+    prompt = (
+        f"Interpret seed purity {purity}% and moisture {moisture}% "
+        f"yielding a germination rate of {pred:.1f}%. "
+        "Give one concise agronomic insight."
+    )
+    return call_agentic_ai(prompt)
+
 # ----------------------------
 # UI LAYOUT
 # ----------------------------
@@ -155,6 +164,17 @@ with tabs[1]:
     model, X_train, y_train, prediction = run_econometric_model(purity, moisture)
     st.metric("Predicted Germination Rate (%)", f"{prediction:.1f}")
 
+# Prepare hover text
+    hover_train = [
+        f"Purity {x:.1f}%, Moisture {m:.1f}%, Germ {y:.1f}%"
+        for x, m, y in zip(X_train[:,0], X_train[:,1], y_train)
+    ]
+    insight = get_ai_explanation(purity, moisture, prediction)
+    hover_current = (
+        f"Purity {purity}%, Moisture {moisture}%, Pred {prediction:.1f}%\n"
+        f"Insight: {insight}"
+    )
+    
     # Interactive 3D regression using Plotly
     import plotly.graph_objects as go
 
