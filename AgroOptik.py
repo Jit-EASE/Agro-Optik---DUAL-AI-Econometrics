@@ -13,53 +13,49 @@ import plotly.graph_objects as go
 # ----------------------------
 # SETUP
 # ----------------------------
-# Read API keys from Streamlit secrets
 OPENAI_API_KEY = st.secrets["OPENAI_API_KEY"]
-GEMINI_API_KEY  = st.secrets["GEMINI_API_KEY"]
-GEMINI_URL      = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent"
+GEMINI_API_KEY = st.secrets["GEMINI_API_KEY"]
+GEMINI_URL     = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent"
 
-# Initialize OpenAI client for GPT-4o Mini
 openai_client = OpenAI(api_key=OPENAI_API_KEY)
-
 st.set_page_config(page_title="AgroOptik Ireland", layout="wide")
 
 # ----------------------------
-# CACHED AI UTILS
+# HELPERS & CACHES
 # ----------------------------
+def extract_gemini_text(raw):
+    if isinstance(raw, dict) and "parts" in raw:
+        return "\n\n".join(p.get("text","") for p in raw["parts"])
+    if isinstance(raw, str):
+        return raw
+    return str(raw)
+
 @st.cache_data(show_spinner=False)
 def call_agentic_ai(prompt_text: str) -> str:
     resp = openai_client.chat.completions.create(
         model="gpt-4o-mini",
         messages=[
-            {"role": "system", "content": "You are AgroOptik, an expert in Irish agri-diagnostics and seed classification."},
-            {"role": "user",   "content": prompt_text}
+            {"role":"system", "content":"You are AgroOptik, expert in Irish agri-diagnostics."},
+            {"role":"user",   "content":prompt_text}
         ],
         temperature=0.6
     )
     return resp.choices[0].message.content or ""
 
 @st.cache_data(show_spinner=False)
-def call_gemini_ai(prompt_text: str) -> str:
-    headers = {
-        "Content-Type": "application/json",
-        "X-goog-api-key": GEMINI_API_KEY
-    }
-    payload = {"contents":[{"parts":[{"text": prompt_text}]}]}
+def call_gemini_ai(prompt_text: str):
+    headers = {"Content-Type":"application/json", "X-goog-api-key":GEMINI_API_KEY}
+    payload = {"contents":[{"parts":[{"text":prompt_text}]}]}
     r = requests.post(GEMINI_URL, headers=headers, json=payload, timeout=15)
     r.raise_for_status()
-    data = r.json()
-    candidates = data.get("candidates", [])
-    result = candidates[0].get("content") if candidates else ""
-    return result or ""
+    return r.json()  # return full JSON so we can extract parts
 
 @st.cache_data(show_spinner=False)
 def run_econometric_model(purity: float, moisture: float):
-    X = np.array([
-        [91,12.5],[88,13.1],[94,11.0],[90,12.0],[95,10.8],
-        [97,12.9],[89,11.2],[93,13.3],[96,10.9],[92,12.6]
-    ])
+    X = np.array([[91,12.5],[88,13.1],[94,11.0],[90,12.0],[95,10.8],
+                  [97,12.9],[89,11.2],[93,13.3],[96,10.9],[92,12.6]])
     y = np.array([92,89,96,90,97,98,88,93,99,94])
-    model = LinearRegression().fit(X, y)
+    model = LinearRegression().fit(X,y)
     pred  = model.predict([[purity, moisture]])[0]
     return model, X, y, pred
 
@@ -67,8 +63,7 @@ def run_econometric_model(purity: float, moisture: float):
 def get_ai_explanation(purity: float, moisture: float, pred: float) -> str:
     prompt = (
         f"Interpret seed purity {purity}% and moisture {moisture}% "
-        f"yielding a germination rate of {pred:.1f}%. "
-        "Give one concise agronomic insight."
+        f"yielding germination rate {pred:.1f}%. Provide one concise agronomic insight."
     )
     return call_agentic_ai(prompt)
 
@@ -82,141 +77,122 @@ def get_iot_data():
 # ----------------------------
 # UI LAYOUT
 # ----------------------------
-st.title("AgroOptik Ireland | AI-Augmented Crop & Seed Insights")
+st.title("AgroOptik Ireland | AI & Econometrics in AgTech")
 
 with st.sidebar:
     st.header("📡 IoT Sensor Feed")
-    for k, v in get_iot_data().items():
+    for k,v in get_iot_data().items():
         st.metric(k, v)
     st.markdown("---")
     st.info("Simulated sensor data")
 
-tabs = st.tabs(["Crop ID & Analysis", "Seed Quality", "Inspector Panel"])
+tabs = st.tabs(["Crop ID & Analysis","Seed Quality","Inspector Panel"])
 
-# ----------- TAB 1: Crop ID & Analysis -----------
+# ---- TAB 1: Crop ID & Analysis ----
 with tabs[0]:
-    st.header("Crop Identification & Contextual Insights")
+    st.header("Crop Identification & Insights")
     img_file = st.file_uploader("Upload Crop Image", type=["jpg","png","jpeg"])
     if img_file:
         img = Image.open(img_file).convert("RGB")
         st.image(img, use_container_width=True)
 
-        # Base64-encode the image
+        # Base64 encode
         buf = io.BytesIO()
         img.save(buf, format="JPEG")
         img_b64 = base64.b64encode(buf.getvalue()).decode()
 
-        # 1) Auto-detect crop via Gemini
-        prompt_detect = (
-            "Identify this crop from the base64-encoded image. "
-            f"Image(base64)={img_b64}"
-        )
+        # Gemini detect
+        prompt_detect = f"Identify this crop from the base64 image: Image(base64)={img_b64}"
         raw_detect = call_gemini_ai(prompt_detect)
-        detected   = raw_detect.strip() if isinstance(raw_detect, str) else ""
-        st.success(f"Detected Crop: **{detected}**")
+        text_detect = extract_gemini_text(raw_detect).strip()
+        if not text_detect:
+            st.error("⚠️ Detection failed. Please upload a clearer image.")
+        else:
+            st.success(f"Detected Crop: **{text_detect}**")
 
-        # 2) Fetch scientific details via Gemini
-        prompt_details = (
-            f"Provide scientific name, family, and key traits for '{detected}' in Ireland."
-        )
-        details = call_gemini_ai(prompt_details)
-        st.markdown("**Crop Details (Gemini):**")
-        st.write(details)
+            # Gemini details
+            prompt_details = (
+                f"Provide scientific name, family and key traits for '{text_detect}' in Ireland."
+            )
+            raw_det = call_gemini_ai(prompt_details)
+            details = extract_gemini_text(raw_det)
+            st.markdown("**Crop Details (Gemini):**")
+            st.write(details)
 
-        # 3) Analyze phenotypic stress via Gemini
-        prompt_stress = (
-            "Analyze this base64-encoded image for phenotypic stress symptoms. "
-            f"Image(base64)={img_b64}"
-        )
-        stress_info = call_gemini_ai(prompt_stress) or "No stress detected"
-        st.warning(f"Phenotypic Stress: {stress_info}")
+            # Gemini stress
+            prompt_stress = f"Analyze phenotypic stress in the image: Image(base64)={img_b64}"
+            raw_stress = call_gemini_ai(prompt_stress)
+            stress_text = extract_gemini_text(raw_stress) or "No stress detected"
+            st.warning(f"Phenotypic Stress:\n\n{stress_text}")
 
-        # 4) Agentic AI Q&A
-        q_crop = st.text_input("Ask AgroOptik AI about this crop / stress:")
-        if q_crop:
-            ans = call_agentic_ai(f"Crop: {detected}. Stress: {stress_info}. {q_crop}")
-            st.markdown("**AgroOptik AI Response:**")
-            st.write(ans)
+            # Agentic Q&A
+            q = st.text_input("Ask AgroOptik AI about this crop/stress:")
+            if q:
+                resp = call_agentic_ai(f"Crop: {text_detect}. Stress: {stress_text}. {q}")
+                st.markdown("**AgroOptik AI Response:**")
+                st.write(resp)
 
-# ----------- TAB 2: Seed Quality -----------
+# ---- TAB 2: Seed Quality & 3D OLS ----
 with tabs[1]:
-    st.header("Seed Purity & 3D OLS Econometric Model")
-    purity   = st.slider("Seed Purity (%)", 85, 100, 92)
-    moisture = st.slider("Moisture (%)", 10, 16, 12)
+    st.header("Seed Purity & 3D Econometric Model")
+    purity  = st.slider("Seed Purity (%)", 85,100,92)
+    moisture= st.slider("Moisture (%)", 10,16,12)
 
-    model, X_train, y_train, prediction = run_econometric_model(purity, moisture)
-    st.metric("Predicted Germination Rate (%)", f"{prediction:.1f}")
+    model, X_train, y_train, pred = run_econometric_model(purity, moisture)
+    st.metric("Predicted Germination Rate (%)", f"{pred:.1f}")
 
-    # Hover text for training data
+    # Hover text
     hover_train = [
-        f"Purity {x:.1f}%, Moisture {m:.1f}%, Germ {y:.1f}%"
-        for x, m, y in zip(X_train[:,0], X_train[:,1], y_train)
+        f"P:{x:.1f}%, M:{m:.1f}%, G:{y:.1f}%"
+        for x,m,y in zip(X_train[:,0], X_train[:,1], y_train)
     ]
-    # AI insight for current input
-    insight       = get_ai_explanation(purity, moisture, prediction)
-    hover_current = (
-        f"Purity {purity}%, Moisture {moisture}%, Pred {prediction:.1f}%\n"
-        f"Insight: {insight}"
-    )
+    insight = get_ai_explanation(purity, moisture, pred)
+    hover_curr = f"P:{purity}%, M:{moisture}%, Pred:{pred:.1f}%\nInsight:{insight}"
 
-    # Build interactive 3D Plotly scene
+    # 3D plot
     P, M = np.meshgrid(np.linspace(85,100,20), np.linspace(10,16,20))
-    Z    = model.predict(np.column_stack((P.ravel(), M.ravel()))).reshape(P.shape)
+    Z = model.predict(np.column_stack((P.ravel(), M.ravel()))).reshape(P.shape)
 
     fig = go.Figure()
     fig.add_trace(go.Scatter3d(
         x=X_train[:,0], y=X_train[:,1], z=y_train,
         mode='markers', marker=dict(size=4),
-        name='Historical Data',
-        hovertext=hover_train, hoverinfo='text'
+        name='Data', hovertext=hover_train, hoverinfo='text'
     ))
-    fig.add_trace(go.Surface(
-        x=P, y=M, z=Z, opacity=0.5, showscale=False,
-        name='OLS Surface'
-    ))
+    fig.add_trace(go.Surface(x=P,y=M,z=Z,opacity=0.5,showscale=False,name='OLS Surface'))
     fig.add_trace(go.Scatter3d(
-        x=[purity], y=[moisture], z=[prediction],
-        mode='markers', marker=dict(size=8, symbol='diamond'),
-        name='Current Input', hovertext=[hover_current],
-        hoverinfo='text'
+        x=[purity], y=[moisture], z=[pred],
+        mode='markers', marker=dict(size=8,symbol='diamond'),
+        name='Current', hovertext=[hover_curr], hoverinfo='text'
     ))
-
     fig.update_layout(
         scene=dict(
-            xaxis_title='Purity (%)',
-            yaxis_title='Moisture (%)',
-            zaxis_title='Germination (%)',
-            bgcolor='#212121',
-            xaxis=dict(color='white'),
-            yaxis=dict(color='white'),
-            zaxis=dict(color='white')
+            xaxis_title='Purity (%)', yaxis_title='Moisture (%)', zaxis_title='Germination (%)',
+            bgcolor='#212121', xaxis=dict(color='white'), yaxis=dict(color='white'), zaxis=dict(color='white')
         ),
-        paper_bgcolor='#212121',
-        font_color='white',
-        width=900, height=600,
-        title_text="3D OLS Regression with NLP Hover"
+        paper_bgcolor='#212121', font_color='white',
+        width=900, height=600, title="3D OLS Regression with AI Hover"
     )
     st.plotly_chart(fig, use_container_width=False)
 
-    # Seed Q&A
-    q_seed = st.text_input("Ask AgroOptik AI about seed metrics:")
-    if q_seed:
-        ans2 = call_agentic_ai(f"Purity={purity}%, Moisture={moisture}%. {q_seed}")
+    q2 = st.text_input("Ask AI about seed metrics:")
+    if q2:
+        res2 = call_agentic_ai(f"Purity={purity}%, Moisture={moisture}%. {q2}")
         st.markdown("**Seed AI Response:**")
-        st.write(ans2)
+        st.write(res2)
 
-# ----------- TAB 3: Inspector Panel -----------
+# ---- TAB 3: Inspector Panel ----
 with tabs[2]:
     st.header("Inspector Panel & AI Guidance")
     if st.checkbox("Inspector Login (Simulated)"):
-        batch    = st.text_input("Batch ID")
-        notes    = st.text_area("Field Notes")
-        decision = st.radio("Decision", ["Approved", "Pending", "Rejected"])
+        batch = st.text_input("Batch ID")
+        notes = st.text_area("Field Notes")
+        decision = st.radio("Decision", ["Approved","Pending","Rejected"])
         st.success("Entry saved.")
-        q_ins = st.text_input("Ask Inspector AI for guidance:")
-        if q_ins:
-            ans3 = call_agentic_ai(f"Batch={batch}. Notes={notes}. {q_ins}")
+        q3 = st.text_input("Ask Inspector AI for guidance:")
+        if q3:
+            res3 = call_agentic_ai(f"Batch={batch}. Notes={notes}. {q3}")
             st.markdown("**Inspector AI Response:**")
-            st.write(ans3)
+            st.write(res3)
 
 st.caption("Prototype by Jit | AI, Econometrics, IoT integrated")
