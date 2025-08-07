@@ -193,7 +193,7 @@ with tabs[1]:
         paper_bgcolor='#212121',
         font_color='white',
         width=900, height=600,
-        title_text="3D OLS Regression with AI-Generated Insights"
+        title_text="OLS Regression Surface"
     )
     st.plotly_chart(fig, use_container_width=False)
 
