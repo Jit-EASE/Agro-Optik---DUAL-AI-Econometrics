@@ -195,7 +195,14 @@ with tabs[1]:
         paper_bgcolor='#212121',
         font=dict(color='white')
     )
-    st.plotly_chart(fig, use_container_width=True)
+    fig.update_layout(
+    width=900,      # px
+    height=600,     # px
+    margin=dict(l=40, r=40, t=50, b=40),
+    title=dict(text="3D OLS Regression Surface", x=0.5)
+    )
+
+    st.plotly_chart(fig, use_container_width=False)
 
     # AI Q&A for seed metrics
     q2 = st.text_input("Ask AI about seed metrics:")
