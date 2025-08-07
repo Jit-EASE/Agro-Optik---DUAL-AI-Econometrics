@@ -14,10 +14,11 @@ import plotly.graph_objects as go
 # SETUP
 # ----------------------------
 # Agentic AI client (GPT-4o Mini)
+OPENAI_API_KEY = st.secrets["OPENAI_API_KEY"]
 openai_client = OpenAI(api_key="YOUR_OPENAI_API_KEY")
 
 # Gemini API for image-based crop/stress detection
-GEMINI_API_KEY = "YOUR_GEMINI_API_KEY"
+GEMINI_API_KEY = st.secrets["GEMINI_API_KEY"]
 GEMINI_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent"
 
 st.set_page_config(page_title="AgroOptik Ireland", layout="wide")
