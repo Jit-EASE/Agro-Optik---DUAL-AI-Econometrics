@@ -18,7 +18,7 @@ OPENAI_API_KEY = st.secrets["OPENAI_API_KEY"]
 GEMINI_API_KEY  = st.secrets["GEMINI_API_KEY"]
 GEMINI_URL      = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent"
 
-# Initialize clients
+# Initialize OpenAI client for GPT-4o Mini
 openai_client = OpenAI(api_key=OPENAI_API_KEY)
 
 st.set_page_config(page_title="AgroOptik Ireland", layout="wide")
@@ -36,7 +36,7 @@ def call_agentic_ai(prompt_text: str) -> str:
         ],
         temperature=0.6
     )
-    return resp.choices[0].message.content
+    return resp.choices[0].message.content or ""
 
 @st.cache_data(show_spinner=False)
 def call_gemini_ai(prompt_text: str) -> str:
@@ -49,7 +49,8 @@ def call_gemini_ai(prompt_text: str) -> str:
     r.raise_for_status()
     data = r.json()
     candidates = data.get("candidates", [])
-    return candidates[0].get("content", "") if candidates else ""
+    result = candidates[0].get("content") if candidates else ""
+    return result or ""
 
 @st.cache_data(show_spinner=False)
 def run_econometric_model(purity: float, moisture: float):
@@ -110,7 +111,8 @@ with tabs[0]:
             "Identify this crop from the base64-encoded image. "
             f"Image(base64)={img_b64}"
         )
-        detected = call_gemini_ai(prompt_detect).strip()
+        raw_detect = call_gemini_ai(prompt_detect)
+        detected   = raw_detect.strip() if isinstance(raw_detect, str) else ""
         st.success(f"Detected Crop: **{detected}**")
 
         # 2) Fetch scientific details via Gemini
@@ -126,7 +128,7 @@ with tabs[0]:
             "Analyze this base64-encoded image for phenotypic stress symptoms. "
             f"Image(base64)={img_b64}"
         )
-        stress_info = call_gemini_ai(prompt_stress).strip()
+        stress_info = call_gemini_ai(prompt_stress) or "No stress detected"
         st.warning(f"Phenotypic Stress: {stress_info}")
 
         # 4) Agentic AI Q&A
