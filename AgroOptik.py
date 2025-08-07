@@ -3,65 +3,30 @@ from PIL import Image
 import numpy as np
 import random
 import io
-import matplotlib.pyplot as plt
-from sklearn.linear_model import LinearRegression
-import requests
-from openai import OpenAI
 import base64
+import requests
 
+from sklearn.linear_model import LinearRegression
+from openai import OpenAI
+import plotly.graph_objects as go
 
 # ----------------------------
-# CONFIGURATION
+# SETUP
 # ----------------------------
-# Load API keys from Streamlit secrets
-openai_client = OpenAI(api_key=st.secrets["OPENAI_API_KEY"])
-GEMINI_API_KEY = st.secrets.get("GEMINI_API_KEY")
+# Agentic AI client (GPT-4o Mini)
+openai_client = OpenAI(api_key="YOUR_OPENAI_API_KEY")
+
+# Gemini API for image-based crop/stress detection
+GEMINI_API_KEY = "YOUR_GEMINI_API_KEY"
 GEMINI_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent"
 
-# Streamlit page config
-st.set_page_config(page_title="AgroOptik – Ireland", layout="wide")
+st.set_page_config(page_title="AgroOptik Ireland", layout="wide")
 
 # ----------------------------
-# HELPER FUNCTIONS
+# CACHED AI UTILS
 # ----------------------------
-@st.cache_data
-def get_iot_data():
-    # Simulated IoT sensor readings
-    return {
-        "Soil Moisture": f"{random.uniform(12,18):.1f}%",
-        "Air Temp": f"{random.uniform(14,22):.1f} °C",
-        "Seedling pH": f"{random.uniform(6.2,6.8):.2f}"
-    }
-
-@st.cache_data
-def run_econometric_model(purity, moisture):
-    # OLS: Germination ~ Purity + Moisture
-    X = np.array([
-        [91,12.5],[88,13.1],[94,11.0],[90,12.0],[95,10.8],
-        [97,12.9],[89,11.2],[93,13.3],[96,10.9],[92,12.6]
-    ])
-    y = np.array([92,89,96,90,97,98,88,93,99,94])
-    model = LinearRegression().fit(X, y)
-    pred = model.predict([[purity, moisture]])[0]
-    return model, X, y, pred
-
-@st.cache_data
-def call_gemini_ai(prompt_text: str) -> str:
-    # Call Google Gemini for text generation
-    headers = {
-        "Content-Type": "application/json",
-        "X-goog-api-key": GEMINI_API_KEY
-    }
-    payload = {"contents": [{"parts": [{"text": prompt_text}]}]}
-    res = requests.post(GEMINI_URL, headers=headers, json=payload, timeout=15)
-    res.raise_for_status()
-    data = res.json()
-    candidates = data.get('candidates', [])
-    return candidates[0].get('content','') if candidates else ""
-
-@st.cache_data
+@st.cache_data(show_spinner=False)
 def call_agentic_ai(prompt_text: str) -> str:
-    # Call OpenAI GPT-4o Mini for contextual Q&A and analysis
     resp = openai_client.chat.completions.create(
         model="gpt-4o-mini",
         messages=[
@@ -73,42 +38,32 @@ def call_agentic_ai(prompt_text: str) -> str:
     return resp.choices[0].message.content
 
 @st.cache_data(show_spinner=False)
-def analyze_stress(image: Image.Image):
-    """
-    Use Gemini to detect phenotypic stress from the image.
-    Returns a tuple (label: str, confidence: float).
-    """
-    # 1. Encode image to base64 JPEG
-    buf = io.BytesIO()
-    image.convert("RGB").save(buf, format="JPEG")
-    img_b64 = base64.b64encode(buf.getvalue()).decode()
-
-    # 2. Build and send prompt
-    prompt = (
-        "Analyze the following base64-encoded crop image and identify any phenotypic stress symptoms. "
-        f"Image(base64)={img_b64}"
-    )
-    response = call_gemini_ai(prompt)
-
-    # 3. Fallback if empty or None
-    if not response:
-        return "No Stress Data", 0.0
-
-    # 4. Parse “Label (0.85)” style replies
-    parts = response.strip().split("(")
-    label = parts[0].strip()
-    conf = 0.0
-    if len(parts) > 1 and parts[1].endswith(")"):
-        try:
-            conf = float(parts[1][:-1])
-        except ValueError:
-            conf = 0.0
-
-    return label, conf
-
+def call_gemini_ai(prompt_text: str) -> str:
+    headers = {
+        "Content-Type": "application/json",
+        "X-goog-api-key": GEMINI_API_KEY
+    }
+    payload = {"contents":[{"parts":[{"text": prompt_text}]}]}
+    r = requests.post(GEMINI_URL, headers=headers, json=payload, timeout=15)
+    r.raise_for_status()
+    data = r.json()
+    candidates = data.get("candidates", [])
+    return candidates[0].get("content", "") if candidates else ""
 
 @st.cache_data(show_spinner=False)
-def get_ai_explanation(purity, moisture, pred):
+def run_econometric_model(purity: float, moisture: float):
+    # Historical dataset
+    X = np.array([
+        [91,12.5],[88,13.1],[94,11.0],[90,12.0],[95,10.8],
+        [97,12.9],[89,11.2],[93,13.3],[96,10.9],[92,12.6]
+    ])
+    y = np.array([92,89,96,90,97,98,88,93,99,94])
+    model = LinearRegression().fit(X, y)
+    pred = model.predict([[purity, moisture]])[0]
+    return model, X, y, pred
+
+@st.cache_data(show_spinner=False)
+def get_ai_explanation(purity: float, moisture: float, pred: float) -> str:
     prompt = (
         f"Interpret seed purity {purity}% and moisture {moisture}% "
         f"yielding a germination rate of {pred:.1f}%. "
@@ -116,69 +71,81 @@ def get_ai_explanation(purity, moisture, pred):
     )
     return call_agentic_ai(prompt)
 
+def get_iot_data():
+    return {
+        "Soil Moisture": f"{random.uniform(12,18):.1f}%",
+        "Air Temp":       f"{random.uniform(14,22):.1f} °C",
+        "Seedling pH":    f"{random.uniform(6.2,6.8):.2f}"
+    }
+
 # ----------------------------
 # UI LAYOUT
 # ----------------------------
-st.title("AgroOptik Ireland | AI-Augmented Crop Health & Econometric Seed Quality Analysis")
+st.title("AgroOptik Ireland | AI-Augmented Crop & Seed Insights")
 
-# Sidebar: IoT Sensor Feed
 with st.sidebar:
     st.header("📡 IoT Sensor Feed")
-    for k, v in get_iot_data().items():
+    for k,v in get_iot_data().items():
         st.metric(k, v)
     st.markdown("---")
-    st.info("Simulated sensor data unless live sensors are connected.")
+    st.info("Simulated sensor data")
 
-# Main tabs
-tabs = st.tabs(["Crop ID & Analysis","Seed Quality","Inspector Panel"])
+tabs = st.tabs(["Crop ID & Analysis", "Seed Quality", "Inspector Panel"])
 
-# Tab 1: Crop Identification & Auto-Detection
+# ----------- TAB 1: Crop ID & Analysis -----------
 with tabs[0]:
-    st.header("Crop Identification & AI Insights")
+    st.header("Crop Identification & Contextual Insights")
     img_file = st.file_uploader("Upload Crop Image", type=["jpg","png","jpeg"])
     if img_file:
-        img = Image.open(img_file).convert('RGB')
+        img = Image.open(img_file).convert("RGB")
         st.image(img, use_container_width=True)
 
-        # Auto-detect crop species
+        # Encode image as base64
         buf = io.BytesIO()
-        img.save(buf, format='JPEG')
+        img.save(buf, format="JPEG")
         img_b64 = base64.b64encode(buf.getvalue()).decode()
+
+        # Gemini auto-detect crop
         prompt_detect = (
-            "Identify the crop species shown in this base64-encoded image. "
+            "Identify this crop from the base64-encoded image. "
             f"Image(base64)={img_b64}"
         )
-        detected = call_gemini_ai(prompt_detect)
-        st.success(f"Detected Crop: {detected}")
+        detected = call_gemini_ai(prompt_detect).strip()
+        st.success(f"Detected Crop: **{detected}**")
 
-        # Fetch scientific details
+        # Gemini fetch scientific details
         prompt_details = (
-            f"Provide scientific details (scientific name, family, key traits) for the crop '{detected}' in Ireland."
+            f"Provide scientific name, family, and key traits for '{detected}' in Ireland."
         )
         details = call_gemini_ai(prompt_details)
-        st.markdown("#### Crop Details (via Gemini AI)")
+        st.markdown("**Crop Details (Gemini):**")
         st.write(details)
 
-        # Phenotypic stress analysis
-        stress, sc = analyze_stress(img)
-        st.warning(f"Phenotypic Stress: {stress} ({sc*100:.1f}% confidence)")
+        # Gemini analyze phenotypic stress
+        prompt_stress = (
+            "Analyze this base64-encoded image for phenotypic stress symptoms. "
+            f"Image(base64)={img_b64}"
+        )
+        stress_info = call_gemini_ai(prompt_stress).strip()
+        st.warning(f"Phenotypic Stress: {stress_info}")
 
-        # Contextual Q&A via OpenAI
-        question = st.text_input("Ask AgroOptik AI about this crop or stress:")
-        if question:
-            response = call_agentic_ai(f"Crop: {detected}. Stress: {stress}. {question}")
-            st.markdown("#### AgroOptik AI Response:")
-            st.write(response)
+        # Agentic AI Q&A
+        q_crop = st.text_input("Ask AgroOptik AI about this crop / stress:")
+        if q_crop:
+            ans = call_agentic_ai(f"Crop: {detected}. Stress: {stress_info}. {q_crop}")
+            st.markdown("**AgroOptik AI Response:**")
+            st.write(ans)
 
-# Tab 2: Seed Purity & OLS 3D Regression
+# ----------- TAB 2: Seed Quality -----------
 with tabs[1]:
-    st.header("Seed Purity & OLS 3D Regression")
-    purity = st.slider("Seed Purity (%)", 85, 100, 92)
+    st.header("Seed Purity & 3D OLS Econometric Model")
+    purity  = st.slider("Seed Purity (%)", 85, 100, 92)
     moisture = st.slider("Moisture (%)", 10, 16, 12)
+
     model, X_train, y_train, prediction = run_econometric_model(purity, moisture)
     st.metric("Predicted Germination Rate (%)", f"{prediction:.1f}")
 
-# Prepare hover text
+    # Prepare hover text
     hover_train = [
         f"Purity {x:.1f}%, Moisture {m:.1f}%, Germ {y:.1f}%"
         for x, m, y in zip(X_train[:,0], X_train[:,1], y_train)
@@ -188,64 +155,66 @@ with tabs[1]:
         f"Purity {purity}%, Moisture {moisture}%, Pred {prediction:.1f}%\n"
         f"Insight: {insight}"
     )
-    
-    # Interactive 3D regression using Plotly
-    import plotly.graph_objects as go
 
-    # Prepare training scatter points
-    scatter = go.Scatter3d(
-        x=X_train[:,0], y=X_train[:,1], z=y_train,
-        mode='markers', marker=dict(size=5), name='Data Points'
-    )
-
-    # Create grid for surface
-    purity_range = np.linspace(85, 100, 20)
-    moisture_range = np.linspace(10, 16, 20)
-    P, M = np.meshgrid(purity_range, moisture_range)
+    # Build 3D Plotly figure
+    purity_grid  = np.linspace(85,100,20)
+    moisture_grid = np.linspace(10,16,20)
+    P, M = np.meshgrid(purity_grid, moisture_grid)
     Z = model.predict(np.column_stack((P.ravel(), M.ravel()))).reshape(P.shape)
 
-    # Surface plot
-    surface = go.Surface(
-        x=P, y=M, z=Z, colorscale='Viridis', opacity=0.6, name='Regression Surface'
-    )
-
-    # Highlight current input
-    current = go.Scatter3d(
+    fig = go.Figure()
+    # training data
+    fig.add_trace(go.Scatter3d(
+        x=X_train[:,0], y=X_train[:,1], z=y_train,
+        mode='markers',
+        marker=dict(size=4),
+        name='Historical Data',
+        hovertext=hover_train,
+        hoverinfo='text'
+    ))
+    # regression surface
+    fig.add_trace(go.Surface(
+        x=P, y=M, z=Z,
+        opacity=0.5,
+        showscale=False,
+        name='OLS Surface'
+    ))
+    # current input
+    fig.add_trace(go.Scatter3d(
         x=[purity], y=[moisture], z=[prediction],
-        mode='markers', marker=dict(size=8, color='red'), name='Current Input'
-    )
+        mode='markers',
+        marker=dict(size=8, symbol='diamond'),
+        name='Current Input',
+        hovertext=[hover_current],
+        hoverinfo='text'
+    ))
 
-    fig = go.Figure(data=[scatter, surface, current])
     fig.update_layout(
         scene=dict(
             xaxis_title='Purity (%)',
             yaxis_title='Moisture (%)',
-            zaxis_title='Germination Rate (%)',
-            bgcolor='#212121',
-            xaxis=dict(backgroundcolor='#212121', gridcolor='white', showbackground=True, zerolinecolor='white'),
-            yaxis=dict(backgroundcolor='#212121', gridcolor='white', showbackground=True, zerolinecolor='white'),
-            zaxis=dict(backgroundcolor='#212121', gridcolor='white', showbackground=True, zerolinecolor='white')
+            zaxis_title='Germination (%)',
+            xaxis=dict(color='white'),
+            yaxis=dict(color='white'),
+            zaxis=dict(color='white'),
+            bgcolor='#212121'
         ),
         paper_bgcolor='#212121',
-        font=dict(color='white')
-    )
-    fig.update_layout(
-    width=900,      # px
-    height=600,     # px
-    margin=dict(l=40, r=40, t=50, b=40),
-    title=dict(text="3D OLS Regression Surface", x=0.5)
+        font_color='white',
+        width=900, height=600,
+        title_text="3D OLS Regression Surface with NLP Hover"
     )
 
     st.plotly_chart(fig, use_container_width=False)
 
-    # AI Q&A for seed metrics
-    q2 = st.text_input("Ask AI about seed metrics:")
-    if q2:
-        resp2 = call_agentic_ai(f"Purity={purity}%, Moisture={moisture}%. {q2}")
-        st.markdown("#### Seed AI Response:")
-        st.write(resp2)
+    # Seed Q&A
+    q_seed = st.text_input("Ask AgroOptik AI about seed metrics:")
+    if q_seed:
+        ans2 = call_agentic_ai(f"Purity={purity}%, Moisture={moisture}%. {q_seed}")
+        st.markdown("**Seed AI Response:**")
+        st.write(ans2)
 
-# Tab 3: Inspector Panel & AI Guidance
+# ----------- TAB 3: Inspector Panel -----------
 with tabs[2]:
     st.header("Inspector Panel & AI Guidance")
     if st.checkbox("Inspector Login (Simulated)"):
@@ -253,10 +222,10 @@ with tabs[2]:
         notes = st.text_area("Field Notes")
         decision = st.radio("Decision", ["Approved", "Pending", "Rejected"])
         st.success("Entry saved.")
-        q3 = st.text_input("Ask AI for regulatory guidance:")
-        if q3:
-            resp3 = call_agentic_ai(f"Batch={batch}, Notes={notes}. {q3}")
-            st.markdown("#### Inspector AI Response:")
-            st.write(resp3)
+        q_ins = st.text_input("Ask Inspector AI for guidance:")
+        if q_ins:
+            ans3 = call_agentic_ai(f"Batch={batch}. Notes={notes}. {q_ins}")
+            st.markdown("**Inspector AI Response:**")
+            st.write(ans3)
 
-st.caption("Prototype Developed by Jit | Gemini + OpenAI, Econometrics, IoT integrated")
+st.caption("Prototype by Jit | AI, Econometrics, IoT integrated")
