@@ -154,27 +154,47 @@ with tabs[1]:
     model, X_train, y_train, prediction = run_econometric_model(purity, moisture)
     st.metric("Predicted Germination Rate (%)", f"{prediction:.1f}")
 
-    # 3D regression surface plot
-    from mpl_toolkits.mplot3d import Axes3D
-    plt.style.use('dark_background')
-    fig = plt.figure(figsize=(7,5), facecolor='#212121')
-    ax = fig.add_subplot(111, projection='3d', facecolor='#212121')
+    # Interactive 3D regression using Plotly
+    import plotly.graph_objects as go
 
-    ax.scatter(X_train[:,0], X_train[:,1], y_train, c='#FFA726', edgecolors='white', s=50, label='Data Points')
-    purity_grid = np.linspace(85,100,20)
-    moisture_grid = np.linspace(10,16,20)
-    P, M = np.meshgrid(purity_grid, moisture_grid)
+    # Prepare training scatter points
+    scatter = go.Scatter3d(
+        x=X_train[:,0], y=X_train[:,1], z=y_train,
+        mode='markers', marker=dict(size=5), name='Data Points'
+    )
+
+    # Create grid for surface
+    purity_range = np.linspace(85, 100, 20)
+    moisture_range = np.linspace(10, 16, 20)
+    P, M = np.meshgrid(purity_range, moisture_range)
     Z = model.predict(np.column_stack((P.ravel(), M.ravel()))).reshape(P.shape)
-    ax.plot_surface(P, M, Z, alpha=0.5, cmap='viridis', edgecolor='none')
-    ax.scatter(purity, moisture, prediction, marker='X', s=100, c='#FF5722', label='Current Input')
 
-    ax.set_xlabel('Purity (%)', color='white')
-    ax.set_ylabel('Moisture (%)', color='white')
-    ax.set_zlabel('Germination Rate (%)', color='white')
-    ax.set_title('3D OLS Regression Surface', color='white')
-    ax.legend(facecolor='#424242', edgecolor='white', labelcolor='white')
-    ax.tick_params(colors='white')
-    st.pyplot(fig)
+    # Surface plot
+    surface = go.Surface(
+        x=P, y=M, z=Z, colorscale='Viridis', opacity=0.6, name='Regression Surface'
+    )
+
+    # Highlight current input
+    current = go.Scatter3d(
+        x=[purity], y=[moisture], z=[prediction],
+        mode='markers', marker=dict(size=8, color='red'), name='Current Input'
+    )
+
+    fig = go.Figure(data=[scatter, surface, current])
+    fig.update_layout(
+        scene=dict(
+            xaxis_title='Purity (%)',
+            yaxis_title='Moisture (%)',
+            zaxis_title='Germination Rate (%)',
+            bgcolor='#212121',
+            xaxis=dict(backgroundcolor='#212121', gridcolor='white', showbackground=True, zerolinecolor='white'),
+            yaxis=dict(backgroundcolor='#212121', gridcolor='white', showbackground=True, zerolinecolor='white'),
+            zaxis=dict(backgroundcolor='#212121', gridcolor='white', showbackground=True, zerolinecolor='white')
+        ),
+        paper_bgcolor='#212121',
+        font=dict(color='white')
+    )
+    st.plotly_chart(fig, use_container_width=True)
 
     # AI Q&A for seed metrics
     q2 = st.text_input("Ask AI about seed metrics:")
