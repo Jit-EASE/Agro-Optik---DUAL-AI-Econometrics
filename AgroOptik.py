@@ -197,4 +197,4 @@ with tabs[2]:
             st.markdown("#### Inspector AI Response:")
             st.write(resp3)
 
-st.caption("Prototype Developed by Jit | Gemini + OpenAI GPT-4o Mini, Econometrics, IoT integrated")
+st.caption("Prototype Developed by Jit | Gemini + OpenAI, Econometrics, IoT integrated")
